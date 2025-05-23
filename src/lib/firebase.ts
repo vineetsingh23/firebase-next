@@ -47,7 +47,7 @@ if (configSource === 'placeholders' || configSource === 'env_vars') { // Check e
     storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
     messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
     appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-    measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
+    // measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
   };
   // Only overwrite if env vars are actually set and provide essential info
   if (envConfig.apiKey && envConfig.projectId) {
