@@ -19,7 +19,8 @@ const firebaseConfigString = typeof (globalThis as any).__firebase_config !== 'u
   : process.env.NEXT_PUBLIC_FIREBASE_CONFIG;
 
 let firebaseConfig: FirebaseConfigType = {};
-let configSource: 'injected_json' | 'env_json' | 'env_vars' | 'placeholders' | 'parse_error' = 'placeholders';
+type ConfigSource = 'injected_json' | 'env_json' | 'env_vars' | 'placeholders' | 'parse_error';
+let configSource: ConfigSource = 'placeholders';
 
 if (firebaseConfigString) {
   try {
