@@ -40,7 +40,7 @@ if (firebaseConfigString) {
 }
 
 // If config wasn't from a valid JSON string, try individual environment variables
-if (configSource === 'placeholders' || configSource === 'env_vars') { // Check env_vars if it was set as default or if JSON parse failed into placeholders
+if (configSource === 'placeholders') { // Only check for 'placeholders' as TypeScript has narrowed the type
   const envConfig: FirebaseConfigType = {
     apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
     authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
