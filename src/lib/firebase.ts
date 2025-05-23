@@ -62,7 +62,7 @@ if (configSource === 'placeholders' || !firebaseConfig.apiKey || !firebaseConfig
     configSource = 'placeholders';
   }
  // Your web app's Firebase configuration
-const firebaseConfig = {
+ const firebaseConfig = {
   apiKey: "AIzaSyCip6eL7pkzNAuLxDjxsBmIbQ7Ke8UoAjI",
   authDomain: "e-learning-67678.firebaseapp.com",
   projectId: "e-learning-67678",
