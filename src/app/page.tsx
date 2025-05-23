@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -56,54 +57,57 @@ const UPSCNavigatorPage: React.FC = () => {
   }, []); // Runs once on mount
   
   useEffect(() => {
-    if (!auth || !isFirebaseActuallyConfigured) { // Check flag here as well
-        if (isFirebaseActuallyConfigured && !userId && !initialAuthToken) {
-            // Only attempt anonymous sign-in if Firebase is configured and no user/token yet
-            // This prevents trying to sign in if auth is null due to config issues
-        } else if (!isFirebaseActuallyConfigured && !appError) {
-            // If appError is already set by the previous useEffect, don't overwrite
-            // This case should ideally be caught by the first useEffect
-        } else if (!auth && isFirebaseActuallyConfigured){
-            // This case implies auth is null but firebase is configured, which is unusual
-            // but we safe guard it.
-             setAppError("Authentication service could not be initialized.");
-             setIsAuthReady(false);
-        }
-        // If auth is null (likely due to config issue caught above), or firebase not configured, return.
-        if (!auth) return; 
+    // Primary guard: if Firebase is not configured, or auth service isn't available, bail out.
+    if (!isFirebaseActuallyConfigured) {
+      // The first useEffect already handles setting appError and ensuring auth/db are null.
+      // We just ensure auth readiness is false and exit.
+      setIsAuthReady(false);
+      return;
     }
 
+    if (!auth) {
+      // This case means isFirebaseActuallyConfigured is true, but auth instance is still null.
+      // This might indicate an issue in firebase.ts logic or an unexpected state.
+      if (!appError) { // Avoid overwriting a more specific error.
+        setAppError("Authentication service could not be initialized. Please check Firebase setup.");
+      }
+      setIsAuthReady(false);
+      return;
+    }
 
+    // At this point, isFirebaseActuallyConfigured is true, and auth is a valid Auth instance.
     const unsubscribe = onAuthStateChanged(auth, async (user: User | null) => {
       if (user) {
         setUserId(user.uid);
         setIsAuthReady(true);
       } else {
-        // Only attempt sign-in if Firebase is actually configured
-        if (isFirebaseActuallyConfigured) {
-            try {
-                if (initialAuthToken) {
-                    await signInWithCustomToken(auth, initialAuthToken);
-                } else {
-                    await signInAnonymously(auth);
-                }
-                // onAuthStateChanged will be called again
-            } catch (e: any) {
-                console.error("Firebase sign-in failed:", e);
-                setAppError(`Authentication failed: ${e.message}. Please refresh the page or check configuration.`);
-                setIsAuthReady(false);
+        // No user currently. Try to sign in.
+        // appError check here is to prevent repeated sign-in attempts if a previous one failed critically.
+        if (!appError) { 
+          try {
+            if (initialAuthToken) {
+              await signInWithCustomToken(auth, initialAuthToken);
+            } else {
+              await signInAnonymously(auth);
             }
-        } else {
-             // If Firebase not configured, ensure auth is not ready. Redundant if first useEffect worked.
+            // onAuthStateChanged will be called again by Firebase if sign-in is successful.
+          } catch (e: any) {
+            console.error("Firebase sign-in attempt failed:", e);
+            setAppError(`Sign-in failed: ${e.message}. Please refresh or check configuration.`);
             setIsAuthReady(false);
+          }
+        } else {
+          // If there's an existing appError, don't attempt sign-in.
+          setIsAuthReady(false);
         }
       }
     });
+
     return () => unsubscribe();
-  }, [auth, appError]); // appError dependency to avoid re-running auth logic if already errored
+  }, [auth, appError, initialAuthToken]);
 
   useEffect(() => {
-    if (!db || !userId || !isAuthReady || !isFirebaseActuallyConfigured) return; // Check flag
+    if (!isFirebaseActuallyConfigured || !db || !userId || !isAuthReady) return; 
     const userProgressDocRef = doc(db, `artifacts/${appId}/users/${userId}/upsc_progress`, 'userProgress');
     const unsubscribe = onSnapshot(userProgressDocRef, (docSnap) => {
       if (docSnap.exists()) {
@@ -116,7 +120,7 @@ const UPSCNavigatorPage: React.FC = () => {
       setAppError("Failed to load your progress. Please try again.");
     });
     return () => unsubscribe();
-  }, [db, userId, isAuthReady]); // Removed isFirebaseActuallyConfigured as it's constant
+  }, [db, userId, isAuthReady, appId]);
 
   const saveProgress = useCallback(async (updatedProgress: ChapterProgress) => {
     if (!isFirebaseActuallyConfigured) {
@@ -146,7 +150,7 @@ const UPSCNavigatorPage: React.FC = () => {
         description: `Failed to save progress: ${e.message}.`,
       });
     }
-  }, [db, userId, isAuthReady, toast]); // Removed isFirebaseActuallyConfigured
+  }, [db, userId, isAuthReady, toast, appId]); 
 
   const exportJson = () => {
     const jsonString = JSON.stringify(upscSubjectsData, null, 2);
@@ -210,7 +214,7 @@ const UPSCNavigatorPage: React.FC = () => {
   };
   
   const markChapterAsRead = useCallback(async (bookSlug: string, chapterSlug: string) => {
-    if (!isFirebaseActuallyConfigured) return; // Prevent action if not configured
+    if (!isFirebaseActuallyConfigured) return; 
     const newProgress = {
       ...chapterProgress,
       [bookSlug]: {
@@ -220,11 +224,10 @@ const UPSCNavigatorPage: React.FC = () => {
     };
     setChapterProgress(newProgress);
     await saveProgress(newProgress);
-  }, [chapterProgress, saveProgress]); // Removed isFirebaseActuallyConfigured
+  }, [chapterProgress, saveProgress]); 
 
   const goToNextChapter = useCallback(async () => {
     if (!selectedBook || !selectedChapter) return;
-    // Mark as read only if firebase is configured (saveProgress handles this check too)
     if (isFirebaseActuallyConfigured) {
         await markChapterAsRead(selectedBook.slug, selectedChapter.slug);
     }
@@ -240,7 +243,7 @@ const UPSCNavigatorPage: React.FC = () => {
         action: <CheckCircle className="text-green-500" />,
       });
     }
-  }, [selectedBook, selectedChapter, markChapterAsRead, toast]); // Removed isFirebaseActuallyConfigured
+  }, [selectedBook, selectedChapter, markChapterAsRead, toast]); 
 
   const goToPreviousChapter = useCallback(() => {
     if (!selectedBook || !selectedChapter) return;
@@ -257,7 +260,7 @@ const UPSCNavigatorPage: React.FC = () => {
       chapterProgress[book.slug]?.[chapter.slug]
     ).length;
     return Math.round((completedChapters / book.chapters.length) * 100);
-  }, [chapterProgress]); // Removed isFirebaseActuallyConfigured
+  }, [chapterProgress]); 
 
   const calculateSubjectProgress = useCallback(() => {
     if (!isFirebaseActuallyConfigured || !selectedSubject) return 0;
@@ -273,7 +276,7 @@ const UPSCNavigatorPage: React.FC = () => {
     });
     if (totalChapters === 0) return 0;
     return Math.round((totalCompletedChapters / totalChapters) * 100);
-  }, [selectedSubject, chapterProgress]); // Removed isFirebaseActuallyConfigured
+  }, [selectedSubject, chapterProgress]);
 
 
   return (
@@ -382,3 +385,5 @@ const UPSCNavigatorPage: React.FC = () => {
 };
 
 export default UPSCNavigatorPage;
+
+
