@@ -11,7 +11,7 @@ interface FirebaseConfigType {
   storageBucket?: string;
   messagingSenderId?: string;
   appId?: string;
-  measurementId?: string; // Optional, but often part of a full config
+ // measurementId?: string; // Optional, but often part of a full config
 }
 
 const firebaseConfigString = typeof (globalThis as any).__firebase_config !== 'undefined' 
