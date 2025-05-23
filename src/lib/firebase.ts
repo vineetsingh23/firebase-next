@@ -1,3 +1,4 @@
+
 import { initializeApp, getApp, getApps, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth } from 'firebase/auth';
 import { getFirestore, Firestore } from 'firebase/firestore';
@@ -38,7 +39,7 @@ if (firebaseConfigString) {
 }
 
 // If config wasn't from a valid JSON string, try individual environment variables
-if (configSource === 'placeholders' || configSource === 'env_vars') {
+if (configSource === 'placeholders' || configSource === 'env_vars') { // Check env_vars if it was set as default or if JSON parse failed into placeholders
   const envConfig: FirebaseConfigType = {
     apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
     authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -48,7 +49,7 @@ if (configSource === 'placeholders' || configSource === 'env_vars') {
     appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
     measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
   };
-  // Only overwrite if env vars are actually set, otherwise keep parsed (if any) or empty
+  // Only overwrite if env vars are actually set and provide essential info
   if (envConfig.apiKey && envConfig.projectId) {
     firebaseConfig = envConfig;
     configSource = 'env_vars';
@@ -56,20 +57,23 @@ if (configSource === 'placeholders' || configSource === 'env_vars') {
 }
 
 
-// Apply placeholders if essential values are still missing (apiKey or projectId)
-if (configSource === 'placeholders' || !firebaseConfig.apiKey || !firebaseConfig.projectId) {
+// Apply placeholders if essential values (apiKey or projectId) are still missing after trying JSON and individual env vars
+if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+  // If we reach here, it means neither JSON string nor individual env vars provided sufficient config.
+  // We will now use hardcoded placeholders.
   if (configSource !== 'parse_error') { // Don't switch to 'placeholders' if it was a parse_error
     configSource = 'placeholders';
   }
- // Your web app's Firebase configuration
- const firebaseConfig = {
-  apiKey: "AIzaSyCip6eL7pkzNAuLxDjxsBmIbQ7Ke8UoAjI",
-  authDomain: "e-learning-67678.firebaseapp.com",
-  projectId: "e-learning-67678",
-  storageBucket: "e-learning-67678.firebasestorage.app",
-  messagingSenderId: "661805825924",
-  appId: "1:661805825924:web:46977292ea3ebb34b0e7d1"
-};
+  
+  // Assign hardcoded placeholder configuration to the outer scope firebaseConfig
+  firebaseConfig = { 
+    apiKey: "AIzaSyCip6eL7pkzNAuLxDjxsBmIbQ7Ke8UoAjI", // Example placeholder
+    authDomain: "e-learning-67678.firebaseapp.com",   // Example placeholder
+    projectId: "e-learning-67678",                  // Example placeholder
+    storageBucket: "e-learning-67678.firebasestorage.app", // Example placeholder
+    messagingSenderId: "661805825924",              // Example placeholder
+    appId: "1:661805825924:web:46977292ea3ebb34b0e7d1" // Example placeholder
+  };
 }
 
 const isFirebaseActuallyConfigured: boolean = 
@@ -77,10 +81,10 @@ const isFirebaseActuallyConfigured: boolean =
 
 if (configSource === 'placeholders') {
   console.warn(
-    "Firebase is using placeholder configuration (e.g., 'YOUR_API_KEY' or 'YOUR_PROJECT_ID'). " +
+    "Firebase is using placeholder configuration (e.g., API key starts with 'AIzaS...' or project ID is 'e-learning-67678'). " +
     "Please set up your Firebase project configuration via environment variables " +
     "(e.g., NEXT_PUBLIC_FIREBASE_API_KEY, NEXT_PUBLIC_FIREBASE_PROJECT_ID) " +
-    "or ensure it's correctly injected if deploying. Firebase features may not work."
+    "or ensure it's correctly injected if deploying. Firebase features will not work correctly."
   );
 } else if (configSource === 'parse_error') {
   console.error(
@@ -88,21 +92,28 @@ if (configSource === 'placeholders') {
   );
 }
 
-let app: FirebaseApp;
-if (!getApps().length) {
-  app = initializeApp(firebaseConfig);
-} else {
-  app = getApp();
-}
+let app: FirebaseApp | null = null;
+let auth: Auth | null = null;
+let db: Firestore | null = null;
 
-const auth: Auth = getAuth(app);
-const db: Firestore = getFirestore(app);
+if (isFirebaseActuallyConfigured) {
+  if (!getApps().length) {
+    app = initializeApp(firebaseConfig);
+  } else {
+    app = getApp();
+  }
+  auth = getAuth(app);
+  db = getFirestore(app);
+}
+// If !isFirebaseActuallyConfigured, app, auth, and db remain null.
+// Warnings/errors about the configuration have already been logged.
 
 // Use appId from global/env first, then from parsed config, then fallback
 const appIdFromGlobalsOrEnv = typeof (globalThis as any).__app_id !== 'undefined' 
   ? (globalThis as any).__app_id 
   : process.env.NEXT_PUBLIC_APP_ID;
 
+// Use appId from the final firebaseConfig if available, otherwise a default.
 const finalAppId: string = appIdFromGlobalsOrEnv || firebaseConfig.appId || 'default-app-id';
 
 const initialAuthToken: string | null = typeof (globalThis as any).__initial_auth_token !== 'undefined'
