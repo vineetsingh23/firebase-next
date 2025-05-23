@@ -5,7 +5,13 @@ import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, 
 import { getFirestore, doc, setDoc, onSnapshot, Firestore, Auth } from 'firebase/firestore';
 
 import { upscSubjectsData, Subject, Textbook, Chapter, ChapterProgress } from '@/lib/data';
-import { db as firestoreDbInstance, auth as firebaseAuthInstance, appId, initialAuthToken } from '@/lib/firebase';
+import { 
+  db as firestoreDbInstance, 
+  auth as firebaseAuthInstance, 
+  appId, 
+  initialAuthToken,
+  isFirebaseActuallyConfigured // Import the flag
+} from '@/lib/firebase';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -37,36 +43,67 @@ const UPSCNavigatorPage: React.FC = () => {
   const { toast } = useToast();
 
   useEffect(() => {
-    // Use instances from firebase.ts
+    if (!isFirebaseActuallyConfigured) {
+      setAppError("Firebase is not configured correctly. Key features like authentication and data storage will be unavailable. Please check your Firebase project setup and environment variables.");
+      setIsAuthReady(false);
+      setDb(null);
+      setAuth(null);
+      return;
+    }
+    // Use instances from firebase.ts if configured
     setDb(firestoreDbInstance);
     setAuth(firebaseAuthInstance);
-  }, []);
+  }, []); // Runs once on mount
   
   useEffect(() => {
-    if (!auth) return;
+    if (!auth || !isFirebaseActuallyConfigured) { // Check flag here as well
+        if (isFirebaseActuallyConfigured && !userId && !initialAuthToken) {
+            // Only attempt anonymous sign-in if Firebase is configured and no user/token yet
+            // This prevents trying to sign in if auth is null due to config issues
+        } else if (!isFirebaseActuallyConfigured && !appError) {
+            // If appError is already set by the previous useEffect, don't overwrite
+            // This case should ideally be caught by the first useEffect
+        } else if (!auth && isFirebaseActuallyConfigured){
+            // This case implies auth is null but firebase is configured, which is unusual
+            // but we safe guard it.
+             setAppError("Authentication service could not be initialized.");
+             setIsAuthReady(false);
+        }
+        // If auth is null (likely due to config issue caught above), or firebase not configured, return.
+        if (!auth) return; 
+    }
+
+
     const unsubscribe = onAuthStateChanged(auth, async (user: User | null) => {
       if (user) {
         setUserId(user.uid);
         setIsAuthReady(true);
       } else {
-        try {
-          if (initialAuthToken) {
-            await signInWithCustomToken(auth, initialAuthToken);
-          } else {
-            await signInAnonymously(auth);
-          }
-          // onAuthStateChanged will be called again
-        } catch (e: any) {
-          console.error("Firebase sign-in failed:", e);
-          setAppError("Authentication failed. Please refresh the page.");
+        // Only attempt sign-in if Firebase is actually configured
+        if (isFirebaseActuallyConfigured) {
+            try {
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                // onAuthStateChanged will be called again
+            } catch (e: any) {
+                console.error("Firebase sign-in failed:", e);
+                setAppError(`Authentication failed: ${e.message}. Please refresh the page or check configuration.`);
+                setIsAuthReady(false);
+            }
+        } else {
+             // If Firebase not configured, ensure auth is not ready. Redundant if first useEffect worked.
+            setIsAuthReady(false);
         }
       }
     });
     return () => unsubscribe();
-  }, [auth]);
+  }, [auth, appError]); // appError dependency to avoid re-running auth logic if already errored
 
   useEffect(() => {
-    if (!db || !userId || !isAuthReady) return;
+    if (!db || !userId || !isAuthReady || !isFirebaseActuallyConfigured) return; // Check flag
     const userProgressDocRef = doc(db, `artifacts/${appId}/users/${userId}/upsc_progress`, 'userProgress');
     const unsubscribe = onSnapshot(userProgressDocRef, (docSnap) => {
       if (docSnap.exists()) {
@@ -79,11 +116,17 @@ const UPSCNavigatorPage: React.FC = () => {
       setAppError("Failed to load your progress. Please try again.");
     });
     return () => unsubscribe();
-  }, [db, userId, isAuthReady]);
+  }, [db, userId, isAuthReady]); // Removed isFirebaseActuallyConfigured as it's constant
 
   const saveProgress = useCallback(async (updatedProgress: ChapterProgress) => {
+    if (!isFirebaseActuallyConfigured) {
+      setAppError("Cannot save progress: Firebase is not configured correctly.");
+      toast({ variant: "destructive", title: "Configuration Error", description: "Cannot save progress: Firebase not configured."});
+      return;
+    }
     if (!db || !userId || !isAuthReady) {
       console.error("Firestore not ready to save progress.");
+       toast({ variant: "destructive", title: "Error", description: "Cannot save progress: Services not ready."});
       return;
     }
     try {
@@ -103,7 +146,7 @@ const UPSCNavigatorPage: React.FC = () => {
         description: `Failed to save progress: ${e.message}.`,
       });
     }
-  }, [db, userId, isAuthReady, toast]);
+  }, [db, userId, isAuthReady, toast]); // Removed isFirebaseActuallyConfigured
 
   const exportJson = () => {
     const jsonString = JSON.stringify(upscSubjectsData, null, 2);
@@ -144,7 +187,6 @@ const UPSCNavigatorPage: React.FC = () => {
   
   const closeModal = () => {
     setShowModal(false);
-    // Reset modal specific states if needed
     setSelectedChapter(null);
     setModalContent('');
     setModalTitle('');
@@ -168,6 +210,7 @@ const UPSCNavigatorPage: React.FC = () => {
   };
   
   const markChapterAsRead = useCallback(async (bookSlug: string, chapterSlug: string) => {
+    if (!isFirebaseActuallyConfigured) return; // Prevent action if not configured
     const newProgress = {
       ...chapterProgress,
       [bookSlug]: {
@@ -177,12 +220,15 @@ const UPSCNavigatorPage: React.FC = () => {
     };
     setChapterProgress(newProgress);
     await saveProgress(newProgress);
-  }, [chapterProgress, saveProgress]);
+  }, [chapterProgress, saveProgress]); // Removed isFirebaseActuallyConfigured
 
   const goToNextChapter = useCallback(async () => {
     if (!selectedBook || !selectedChapter) return;
+    // Mark as read only if firebase is configured (saveProgress handles this check too)
+    if (isFirebaseActuallyConfigured) {
+        await markChapterAsRead(selectedBook.slug, selectedChapter.slug);
+    }
     const currentChapterIndex = selectedBook.chapters.findIndex(c => c.slug === selectedChapter.slug);
-    await markChapterAsRead(selectedBook.slug, selectedChapter.slug);
     if (currentChapterIndex < selectedBook.chapters.length - 1) {
       const nextChapter = selectedBook.chapters[currentChapterIndex + 1];
       fetchAndDisplayMarkdown(nextChapter, selectedBook.slug);
@@ -194,7 +240,7 @@ const UPSCNavigatorPage: React.FC = () => {
         action: <CheckCircle className="text-green-500" />,
       });
     }
-  }, [selectedBook, selectedChapter, markChapterAsRead, toast]);
+  }, [selectedBook, selectedChapter, markChapterAsRead, toast]); // Removed isFirebaseActuallyConfigured
 
   const goToPreviousChapter = useCallback(() => {
     if (!selectedBook || !selectedChapter) return;
@@ -206,15 +252,15 @@ const UPSCNavigatorPage: React.FC = () => {
   }, [selectedBook, selectedChapter]);
 
   const calculateBookProgress = useCallback((book: Textbook) => {
-    if (!book.chapters || book.chapters.length === 0) return 0;
+    if (!isFirebaseActuallyConfigured || !book.chapters || book.chapters.length === 0) return 0;
     const completedChapters = book.chapters.filter(chapter =>
       chapterProgress[book.slug]?.[chapter.slug]
     ).length;
     return Math.round((completedChapters / book.chapters.length) * 100);
-  }, [chapterProgress]);
+  }, [chapterProgress]); // Removed isFirebaseActuallyConfigured
 
   const calculateSubjectProgress = useCallback(() => {
-    if (!selectedSubject) return 0;
+    if (!isFirebaseActuallyConfigured || !selectedSubject) return 0;
     let totalChapters = 0;
     let totalCompletedChapters = 0;
     selectedSubject.recommendedTextbooks.forEach(book => {
@@ -227,7 +273,7 @@ const UPSCNavigatorPage: React.FC = () => {
     });
     if (totalChapters === 0) return 0;
     return Math.round((totalCompletedChapters / totalChapters) * 100);
-  }, [selectedSubject, chapterProgress]);
+  }, [selectedSubject, chapterProgress]); // Removed isFirebaseActuallyConfigured
 
 
   return (
@@ -246,14 +292,23 @@ const UPSCNavigatorPage: React.FC = () => {
           </Button>
           <ThemeToggleButton />
         </div>
+        
+        {appError && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertTriangle className="h-5 w-5" />
+            <AlertTitle>Application Error</AlertTitle>
+            <AlertDescription>{appError}</AlertDescription>
+          </Alert>
+        )}
 
-        {userId && isAuthReady && (
+        {isFirebaseActuallyConfigured && userId && isAuthReady && !appError && (
           <div className="text-center text-xs text-muted-foreground mb-4 p-2 bg-muted rounded-md">
             <Info className="inline h-4 w-4 mr-1" />
             Logged in as: <span className="font-mono">{userId}</span>
           </div>
         )}
-         {!isAuthReady && !appError && (
+
+         {isFirebaseActuallyConfigured && !isAuthReady && !appError && (
             <Alert variant="default" className="mb-4 bg-blue-500/10 border-blue-500/50">
               <Info className="h-5 w-5 text-blue-500" />
               <AlertTitle className="text-blue-700 dark:text-blue-300">Initializing</AlertTitle>
@@ -262,13 +317,7 @@ const UPSCNavigatorPage: React.FC = () => {
               </AlertDescription>
             </Alert>
           )}
-        {appError && (
-          <Alert variant="destructive" className="mb-4">
-            <AlertTriangle className="h-5 w-5" />
-            <AlertTitle>Application Error</AlertTitle>
-            <AlertDescription>{appError}</AlertDescription>
-          </Alert>
-        )}
+
 
         <div className="space-y-8">
           {upscSubjectsData["UPSC Subjects"].map((subject, sIndex) => (
@@ -293,9 +342,11 @@ const UPSCNavigatorPage: React.FC = () => {
                         <div className="w-full sm:w-48 mt-2 sm:mt-0">
                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
                             <span>Progress:</span>
-                            <span className="font-semibold text-foreground">{calculateBookProgress(book)}%</span>
+                            <span className="font-semibold text-foreground">
+                              {isFirebaseActuallyConfigured ? calculateBookProgress(book) : 0}%
+                            </span>
                            </div>
-                          <Progress value={calculateBookProgress(book)} className="h-2 mt-1" />
+                          <Progress value={isFirebaseActuallyConfigured ? calculateBookProgress(book) : 0} className="h-2 mt-1" />
                         </div>
                       </div>
                     </li>
@@ -314,7 +365,7 @@ const UPSCNavigatorPage: React.FC = () => {
           book={selectedBook}
           selectedChapter={selectedChapter}
           onSelectChapter={fetchAndDisplayMarkdown}
-          chapterProgress={chapterProgress}
+          chapterProgress={isFirebaseActuallyConfigured ? chapterProgress : {}}
           onMarkAsRead={markChapterAsRead}
           onNextChapter={goToNextChapter}
           onPrevChapter={goToPreviousChapter}
@@ -323,7 +374,7 @@ const UPSCNavigatorPage: React.FC = () => {
           isLoading={isContentLoading}
           error={contentError}
           subjectName={selectedSubject?.subjectName}
-          subjectProgress={calculateSubjectProgress()}
+          subjectProgress={isFirebaseActuallyConfigured ? calculateSubjectProgress() : 0}
         />
       )}
     </div>
