@@ -61,15 +61,15 @@ if (configSource === 'placeholders' || !firebaseConfig.apiKey || !firebaseConfig
   if (configSource !== 'parse_error') { // Don't switch to 'placeholders' if it was a parse_error
     configSource = 'placeholders';
   }
-  firebaseConfig = {
-    apiKey: firebaseConfig.apiKey || "YOUR_API_KEY",
-    authDomain: firebaseConfig.authDomain || `YOUR_PROJECT_ID.firebaseapp.com`,
-    projectId: firebaseConfig.projectId || "YOUR_PROJECT_ID",
-    storageBucket: firebaseConfig.storageBucket || `YOUR_PROJECT_ID.appspot.com`,
-    messagingSenderId: firebaseConfig.messagingSenderId || "YOUR_MESSAGING_SENDER_ID",
-    appId: firebaseConfig.appId || "YOUR_APP_ID",
-    measurementId: firebaseConfig.measurementId,
-  };
+ // Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyCip6eL7pkzNAuLxDjxsBmIbQ7Ke8UoAjI",
+  authDomain: "e-learning-67678.firebaseapp.com",
+  projectId: "e-learning-67678",
+  storageBucket: "e-learning-67678.firebasestorage.app",
+  messagingSenderId: "661805825924",
+  appId: "1:661805825924:web:46977292ea3ebb34b0e7d1"
+};
 }
 
 const isFirebaseActuallyConfigured: boolean = 
